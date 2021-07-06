@@ -39,7 +39,7 @@ push_lookup = {
     '7f': 32,
 }
 
-OP_JUMP = '5b' 
+OP_JUMPDEST = '5b'
 
 def get_jumpdests(evm_bytecode: str) -> [int]:
     cur_pos = 0
@@ -50,15 +50,18 @@ def get_jumpdests(evm_bytecode: str) -> [int]:
         cur_byte = evm_bytecode[cur_pos:cur_pos + 2]
         if cur_byte in push_lookup:
             cur_pos += push_lookup[cur_byte] * 2
-        elif cur_byte == OP_JUMP:
+        elif cur_byte == OP_JUMPDEST:
             jumps.append(pc)
 
         pc += 1
         cur_pos += 2
     return jumps
 
-def create_dense_jumptable(jumpdests: [int]) -> [int]:
-    jumptable = [0]
+def create_delta_jumptable(jumpdests: [int]) -> [int]:
+    if len(jumpdests) == 0:
+        return []
+
+    jumptable = [jumpdests[0]]
     last_jumpdest = jumpdests[0]
 
     for jumpdest_pc in jumpdests[1:]:
@@ -66,6 +69,15 @@ def create_dense_jumptable(jumpdests: [int]) -> [int]:
         last_jumpdest = jumpdest_pc
 
     return jumptable
+
+def create_dense_jumptable(jumpdests: [int]) -> str:
+    encoded = ''
+    for d in jumpdests:
+        while d >= 256:
+            encoded += 'ff'
+            d -= 256
+        encoded += bytes.hex(d.to_bytes(1, 'big'))
+    return encoded
 
 def jumpdest_delta_distribution(dense_jumptable: [int]) -> (float, float):
     data = np.array(dense_jumptable)
@@ -78,13 +90,18 @@ def dense_jumptable_size_overhead_pct(jumptable: [int]) -> float:
     pass
 
 jumpdest_pcs = get_jumpdests(test_evm_bytecode)
-dense_jumptable = create_dense_jumptable(jumpdest_pcs)
-mean, stdev = jumpdest_delta_distribution(dense_jumptable)
+delta_jumptable = create_delta_jumptable(jumpdest_pcs)
+dense_jumptable = create_dense_jumptable(delta_jumptable)
+mean, stdev = jumpdest_delta_distribution(delta_jumptable)
 
-print("jumptable size (bytes)", dense_jumptable_size(dense_jumptable))
+print("jumptable size (entries)", len(jumpdest_pcs))
+print("jumptable size (bytes)", len(dense_jumptable) // 2)
 print("distribution of distances between jumpdests.  mean: ", mean, ". stdev ", stdev)
-print("min value: ", min(dense_jumptable[1:]))
-print("max value: ", max(dense_jumptable[1:]))
-print("num deltas between 128 and 256 (non-inclusive)", len([val for val in dense_jumptable[1:] if val > 128 and val < 256]))
-print("num deltas gte 256", len([val for val in dense_jumptable[1:] if val > 256]))
-import pdb; pdb.set_trace()
+print("min value: ", min(delta_jumptable[1:]))
+print("max value: ", max(delta_jumptable[1:]))
+print("num deltas between 128 and 256 (non-inclusive)", len([val for val in delta_jumptable[1:] if val > 128 and val < 256]))
+print("num deltas gte 256", len([val for val in delta_jumptable[1:] if val > 256]))
+#import pdb; pdb.set_trace()
+
+print("delta table: ", delta_jumptable)
+print("densely encoded: ", dense_jumptable)
