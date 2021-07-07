@@ -41,6 +41,9 @@ push_lookup = {
 
 OP_JUMPDEST = '5b'
 
+#test_evm_bytecode = (OP_JUMPDEST + '504030') * (25467//4)
+test_evm_bytecode = OP_JUMPDEST + ('90' * 513) + OP_JUMPDEST
+
 def get_jumpdests(evm_bytecode: str) -> [int]:
     cur_pos = 0
     pc = 0
@@ -70,13 +73,26 @@ def create_delta_jumptable(jumpdests: [int]) -> [int]:
 
     return jumptable
 
-def create_dense_jumptable(jumpdests: [int]) -> str:
+def create_dense_jumptable_basic(jumpdests: [int]) -> str:
     encoded = ''
     for d in jumpdests:
         while d >= 256:
             encoded += 'ff'
             d -= 256
         encoded += bytes.hex(d.to_bytes(1, 'big'))
+    return encoded
+
+def create_dense_jumptable_leb128(jumpdests: [int]) -> str:
+    encoded = ''
+    for d in jumpdests:
+        assert(d <= 16383)
+        if d <= 0x7f:
+            encoded += bytes.hex(d.to_bytes(1, 'big'))
+        else:
+            hi = 0x80 | (d >> 7)
+            lo = d & 0x7f
+            encoded += bytes.hex(hi.to_bytes(1, 'big'))
+            encoded += bytes.hex(lo.to_bytes(1, 'big'))
     return encoded
 
 def jumpdest_delta_distribution(dense_jumptable: [int]) -> (float, float):
@@ -91,7 +107,7 @@ def dense_jumptable_size_overhead_pct(jumptable: [int]) -> float:
 
 jumpdest_pcs = get_jumpdests(test_evm_bytecode)
 delta_jumptable = create_delta_jumptable(jumpdest_pcs)
-dense_jumptable = create_dense_jumptable(delta_jumptable)
+dense_jumptable = create_dense_jumptable_leb128(delta_jumptable)
 mean, stdev = jumpdest_delta_distribution(delta_jumptable)
 
 print("jumptable size (entries)", len(jumpdest_pcs))
@@ -104,4 +120,5 @@ print("num deltas gte 256", len([val for val in delta_jumptable[1:] if val > 256
 #import pdb; pdb.set_trace()
 
 print("delta table: ", delta_jumptable)
-print("densely encoded: ", dense_jumptable)
+print("densely encoded (basic): ", create_dense_jumptable_basic(delta_jumptable))
+print("densely encoded (leb128): ", create_dense_jumptable_leb128(delta_jumptable))
