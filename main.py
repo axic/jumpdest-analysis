@@ -42,7 +42,8 @@ push_lookup = {
 OP_JUMPDEST = '5b'
 
 #test_evm_bytecode = (OP_JUMPDEST + '504030') * (25467//4)
-test_evm_bytecode = OP_JUMPDEST + ('90' * 513) + OP_JUMPDEST
+#test_evm_bytecode = OP_JUMPDEST + ('90' * 513) + OP_JUMPDEST
+test_evm_bytecode = OP_JUMPDEST + ('90' * 25000) + OP_JUMPDEST
 
 def get_jumpdests(evm_bytecode: str) -> [int]:
     cur_pos = 0
@@ -85,13 +86,20 @@ def create_dense_jumptable_basic(jumpdests: [int]) -> str:
 def create_dense_jumptable_leb128(jumpdests: [int]) -> str:
     encoded = ''
     for d in jumpdests:
-        assert(d <= 16383)
+        assert(d <= 0x1f417f)
         if d <= 0x7f:
             encoded += bytes.hex(d.to_bytes(1, 'big'))
-        else:
+        elif d <= 0x3f01:
             hi = 0x80 | (d >> 7)
             lo = d & 0x7f
             encoded += bytes.hex(hi.to_bytes(1, 'big'))
+            encoded += bytes.hex(lo.to_bytes(1, 'big'))
+        else:
+            hi = 0x80 | ((d >> 14) & 0xff)
+            mid = 0x80 | ((d >> 7) & 0xff)
+            lo = d & 0x7f
+            encoded += bytes.hex(hi.to_bytes(1, 'big'))
+            encoded += bytes.hex(mid.to_bytes(1, 'big'))
             encoded += bytes.hex(lo.to_bytes(1, 'big'))
     return encoded
 
